@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         learn.eltngl.com
+// @name         learn.eltngl.com (Optimized)
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
-// @description  Tự giải bài tập ELTNGL bằng AI (Groq)
+// @version      1.0.2
+// @description  Tự giải bài tập ELTNGL bằng AI (Bản tối ưu siêu nhẹ)
 // @author       You
 // @match        *://*.eltngl.com/*
 // @match        *://*.cengage.com/*
@@ -18,8 +18,6 @@
 
     const AI_MODEL = "openai/gpt-oss-120b";
     const API_STORAGE_KEY = "eltngl_groq_api_key";
-    const MEMORY_KEY = "eltngl_ai_mistake_memory_v29";
-
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const isTopWindow = (window.top === window.self);
 
@@ -37,29 +35,6 @@
             }
         }
         return key;
-    }
-
-    // --- BỘ NHỚ VĨNH VIỄN ---
-    function getMistakes() {
-        try {
-            return JSON.parse(GM_getValue(MEMORY_KEY, "[]"));
-        } catch (e) {
-            return [];
-        }
-    }
-
-    function saveMistake(contextSnippet, wrongAnswer) {
-        if (!wrongAnswer || wrongAnswer.trim() === "") return;
-        let mistakes = getMistakes();
-        const cleanCtx = contextSnippet.replace(/\s+/g, ' ').trim();
-        const cleanWrong = wrongAnswer.trim();
-
-        const exists = mistakes.some(m => m.context === cleanCtx && m.wrong.toLowerCase() === cleanWrong.toLowerCase());
-        if (!exists) {
-            mistakes.push({ context: cleanCtx, wrong: cleanWrong });
-            if (mistakes.length > 200) mistakes.shift();
-            GM_setValue(MEMORY_KEY, JSON.stringify(mistakes));
-        }
     }
 
     // --- QUÉT XUYÊN SHADOW DOM ---
@@ -141,46 +116,6 @@
     function simulateDragDrop(sourceNode, destinationNode) {
         simulateMouseClick(sourceNode);
         setTimeout(() => simulateMouseClick(destinationNode), 50);
-    }
-
-    function isMarkedWrong(el) {
-        let wrapper = el.closest('.om-text-gap__target-item, .textGapItem, [role="listbox"], .listbox, [class*="choice"], [class*="input-radio"], [class*="input-checkbox"]') || el.parentElement;
-        if (!wrapper) return false;
-        const wrongRegex = /incorrect|wrong|cross|is-error|has-error|invalid|false|fail/i;
-        const correctRegex = /correct|tick|check|valid|right/i;
-        for (let node of [el, wrapper, wrapper.parentElement]) {
-            if (!node) continue;
-            const cls = typeof node.className === 'string' ? node.className : '';
-            if (correctRegex.test(cls) && !wrongRegex.test(cls)) return false;
-            if (wrongRegex.test(cls)) return true;
-        }
-        return wrapper.querySelector('[class*="cross"], [class*="incorrect"], [class*="wrong"], [aria-label*="incorrect" i]') !== null;
-    }
-
-    function learnLocalMistakes() {
-        let learnedCount = 0;
-        querySelectorAllDeep('input[type="text"], input.textGapItem__input, select').forEach(input => {
-            if (isElementActive(input) && isMarkedWrong(input) && input.value.trim()) {
-                saveMistake(getExactGapBoundaries(input), input.value.trim());
-                learnedCount++;
-            }
-        });
-        querySelectorAllDeep('button[role="combobox"], .listbox__label').forEach(combo => {
-            if (isElementActive(combo) && isMarkedWrong(combo) && combo.innerText.trim()) {
-                saveMistake(getExactGapBoundaries(combo), combo.innerText.trim());
-                learnedCount++;
-            }
-        });
-        querySelectorAllDeep('.om-text-gap__droppable, .droppable').forEach(zone => {
-            if (isElementActive(zone) && isMarkedWrong(zone) && zone.innerText.trim()) {
-                let val = zone.innerText.trim().split('\n')[0];
-                if (val && val.length < 100) {
-                    saveMistake(getExactGapBoundaries(zone), val);
-                    learnedCount++;
-                }
-            }
-        });
-        return learnedCount;
     }
 
     let localAnswerGroups = [];
@@ -348,14 +283,11 @@
         return true;
     }
 
+    // Lắng nghe Message từ iFrames
     window.addEventListener("message", async (event) => {
         if (!event.data || event.data.source !== "ELTNGL_AI_HELPER") return;
 
-        if (event.data.action === "LEARN_MISTAKES") {
-            const count = learnLocalMistakes();
-            window.top.postMessage({ source: "ELTNGL_AI_HELPER", action: "LEARN_RESULT", count }, "*");
-        } else if (event.data.action === "SCAN_QUESTIONS") {
-            learnLocalMistakes();
+        if (event.data.action === "SCAN_QUESTIONS") {
             const payload = await collectLocalQuestions();
             if (payload.fields.length > 0) {
                 window.top.postMessage({
@@ -393,25 +325,15 @@
         overlay.innerHTML = html;
     }
 
+    // --- XÂY DỰNG GIAO DIỆN NÚT BẤM ---
     const btnContainer = document.createElement("div");
     btnContainer.style = "position:fixed; bottom:20px; left:20px; z-index:9999; display:flex; gap:8px;";
     document.body.appendChild(btnContainer);
 
     const btn = document.createElement("button");
-    btn.innerHTML = "✨ Giải V29.4";
+    btn.innerHTML = "✨ Giải (Optimized)";
     btn.style = "padding:10px 15px; background:#F55036; color:white; border:none; border-radius:5px; font-weight:bold; cursor:pointer; box-shadow: 0px 4px 6px rgba(0,0,0,0.3);";
     btnContainer.appendChild(btn);
-
-    const learnBtn = document.createElement("button");
-    learnBtn.innerHTML = `🧠 Đã nhớ (${getMistakes().length})`;
-    learnBtn.style = "padding:10px 12px; background:#2b3137; color:white; border:none; border-radius:5px; font-weight:bold; cursor:pointer; box-shadow: 0px 4px 6px rgba(0,0,0,0.3);";
-    btnContainer.appendChild(learnBtn);
-
-    const clearBtn = document.createElement("button");
-    clearBtn.innerHTML = "🗑️";
-    clearBtn.title = "Xóa bộ nhớ câu sai";
-    clearBtn.style = "padding:10px; background:#555; color:white; border:none; border-radius:5px; cursor:pointer;";
-    btnContainer.appendChild(clearBtn);
 
     const keyBtn = document.createElement("button");
     keyBtn.innerHTML = "🔑";
@@ -426,14 +348,6 @@
         }
     });
 
-    clearBtn.addEventListener("click", () => {
-        if (confirm("Xóa toàn bộ trí nhớ về các câu làm sai?")) {
-            GM_setValue(MEMORY_KEY, "[]");
-            learnBtn.innerHTML = "🧠 Đã nhớ (0)";
-            alert("Đã xóa sạch bộ nhớ!");
-        }
-    });
-
     function broadcastToAllFrames(messageObj) {
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach((iframe, idx) => {
@@ -442,25 +356,6 @@
             } catch (e) {}
         });
     }
-
-    learnBtn.addEventListener("click", async () => {
-        let localLearned = learnLocalMistakes();
-        let iframeLearned = 0;
-
-        const listener = (e) => {
-            if (e.data && e.data.source === "ELTNGL_AI_HELPER" && e.data.action === "LEARN_RESULT") {
-                iframeLearned += e.data.count;
-            }
-        };
-        window.addEventListener("message", listener);
-        broadcastToAllFrames({ source: "ELTNGL_AI_HELPER", action: "LEARN_MISTAKES" });
-        await sleep(300);
-        window.removeEventListener("message", listener);
-
-        const totalNew = localLearned + iframeLearned;
-        learnBtn.innerHTML = `🧠 Đã nhớ (${getMistakes().length})`;
-        alert(totalNew > 0 ? `✅ Đã lưu ${totalNew} lỗi sai mới!` : "Không phát hiện câu sai mới.");
-    });
 
     btn.addEventListener("click", async () => {
         const currentApiKey = getOrPromptApiKey(false);
@@ -472,7 +367,6 @@
         btn.innerHTML = "⏳ Đang quét...";
         btn.disabled = true;
 
-        learnLocalMistakes();
         let activeTarget = null;
         let localData = await collectLocalQuestions();
 
@@ -496,9 +390,6 @@
             });
         }
 
-        const allMistakes = getMistakes();
-        learnBtn.innerHTML = `🧠 Đã nhớ (${allMistakes.length})`;
-
         if (!activeTarget || activeTarget.data.fields.length === 0) {
             alert("Không tìm thấy câu hỏi nào trên màn hình!");
             return resetBtn();
@@ -511,13 +402,6 @@
 
         fields.forEach((field, index) => {
             optionsContext += `Field ${index + 1}: "${field.context}"`;
-
-            let fieldMistakes = allMistakes.filter(m => m.context === field.context);
-            if (fieldMistakes.length > 0) {
-                let wrongList = fieldMistakes.map(m => `"${m.wrong}"`).join(", ");
-                optionsContext += `\n[CRITICAL ERROR: Previously answered ${wrongList} and it was WRONG. Do NOT repeat!]`;
-            }
-
             if (field.options && field.options.length > 0) {
                 optionsContext += ` -> Options (return exact option text): [${field.options.join(", ")}]`;
             }
@@ -532,8 +416,7 @@
         RULES:
         1. Read the exact text outside '[___]' to prevent duplicating words.
         2. When Options are listed, return the EXACT matching option string (e.g., "a", "b", "c", "d", "e", "f").
-        3. NEVER output any answer listed in [CRITICAL ERROR].
-        4. Return ONLY a raw JSON array of strings (or arrays of strings for checkboxes) matching the ${fields.length} fields in order. No markdown, no explanations.
+        3. Return ONLY a raw JSON array of strings (or arrays of strings for checkboxes) matching the ${fields.length} fields in order. No markdown, no explanations.
         `;
 
         btn.innerHTML = `⏳ AI đang nghĩ (${fields.length})...`;
@@ -601,7 +484,7 @@
     });
 
     function resetBtn() {
-        btn.innerHTML = "✨ Giải V29.4";
+        btn.innerHTML = "✨ Giải (Optimized)";
         btn.disabled = false;
     }
 })();
